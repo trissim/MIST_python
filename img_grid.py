@@ -6,7 +6,7 @@ import skimage.io
 import logging
 
 # local imports
-import img_tile
+import MIST.img_tile as img_tile
 
 
 

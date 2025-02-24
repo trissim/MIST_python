@@ -7,9 +7,9 @@ import logging
 from abc import ABC
 
 # local imports
-import img_tile
-import img_grid
-import utils
+import MIST.img_tile as img_tile
+import MIST.img_grid as img_grid
+import MIST.utils as utils
 
 
 class PCIAM(ABC):
@@ -252,7 +252,11 @@ class PciamParallel(PCIAM):
         # for worker_input in worker_input_list:
         #     results.append(self._worker(*worker_input))
         import multiprocessing
-        with multiprocessing.Pool(processes=utils.get_num_workers()) as pool:
+        if hasattr(self.args, 'num_threads'):
+            processes=self.args.num_threads
+        else:
+            processes=utils.get_num_workers()
+        with multiprocessing.Pool(processes=processes) as pool:
             # perform the work in parallel
             results = pool.starmap(self._worker, worker_input_list)
 

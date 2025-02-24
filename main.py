@@ -13,12 +13,12 @@ import argparse
 import time
 
 # local imports
-import translation_refinement
-import img_grid
-import pciam
-import stage_model
-import assemble
-import utils
+import MIST.translation_refinement as translation_refinement
+import MIST.img_grid as img_grid
+import MIST.pciam as pciam
+import MIST.stage_model as stage_model
+import MIST.assemble as assemble
+import MIST.utils as utils
 
 
 
@@ -29,10 +29,10 @@ def mist(args: argparse.Namespace):
             import shutil
             shutil.rmtree(args.output_dirpath)
 
-    if os.path.exists(args.output_dirpath):
-        raise RuntimeError("Output directory already exists: {}".format(args.output_dirpath))
+#    if os.path.exists(args.output_dirpath):
+#        raise RuntimeError("Output directory already exists: {}".format(args.output_dirpath))
 
-    os.makedirs(args.output_dirpath)
+    os.makedirs(args.output_dirpath,exist_ok=True)
 
     # add the file based handler to the logger
     fh = logging.FileHandler(filename=os.path.join(args.output_dirpath, '{}log.txt'.format(args.output_prefix)))
@@ -119,6 +119,9 @@ if __name__ == "__main__":
     parser.add_argument('--output-prefix', type=str, default='img-')
     parser.add_argument('--save-image', action="store_true", default=False)
     parser.add_argument('--disable-mem-cache', action="store_true", default=False)
+    parser.add_argument('--bin-factor', type=int, default=1)
+    parser.add_argument('--num-threads', required=True, type=int, default=utils.get_num_workers())
+
 
     # stage model parameters
     parser.add_argument('--stage-repeatability', type=float, default=None)

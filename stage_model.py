@@ -5,12 +5,11 @@ import logging
 import time
 
 # local imports
-import img_grid
-import translation_refinement
-import utils
-import mle_estimator
-import img_tile
-
+import MIST.img_grid as img_grid
+import MIST.translation_refinement as translation_refinement
+import MIST.utils as utils
+import MIST.mle_estimator as mle_estimator
+import MIST.img_tile as img_tile
 
 
 class StageModel():
@@ -39,7 +38,7 @@ class StageModel():
         assert direction in ['VERTICAL', 'HORIZONTAL']
         translations = list()
 
-        str = "Grid translations for direction: {}".format(direction)
+        str_info = "Grid translations for direction: {}".format(direction)
         for r in range(self.args.grid_height):
             row_str = ""
             for c in range(self.args.grid_width):
@@ -54,9 +53,9 @@ class StageModel():
                 translations.append(val)
                 row_str += "{}, ".format(val)
             if len(row_str) > 0:
-                str += "\n{}".format(row_str)
+                str_info += "\n{}".format(row_str)
         if print_log:
-            logging.info(str)
+            logging.info(str_info)
 
         return translations
 
@@ -114,14 +113,8 @@ class StageModel():
 
         def lcl_filter(valid_tiles: set[img_tile.Tile], direction: str, displacement: str) -> set[img_tile.Tile]:
             """
-            # filter the translations to remove outliers
-            # compute the statistics required to determine which translations are outliers
-            # q1 is first quartile
-            # q2 is second quartile (median)
-            # q3 is third quartile
-            # filter based on (>q3 + w(q3-q1)) and (<q1 - w(q3-q1))
+            Filter the translations to remove outliers using quartiles.
             """
-            # only filter if there are more than 3 translations
             if len(valid_tiles) < 3:
                 return valid_tiles
 
@@ -139,9 +132,7 @@ class StageModel():
             q1 = np.median(less_than)
             q3 = np.median(greater_than)
             iqr = np.abs(q3 - q1)
-            w = 1.5  # default statistical outlier w (1.5)
-            # keep only those tiles within the interquartile range
-
+            w = 1.5  # default statistical outlier weight
             new_valid_tiles = set()
             for t in valid_tiles:
                 if displacement == 'x':
@@ -152,7 +143,6 @@ class StageModel():
                     new_valid_tiles.add(t)
             return new_valid_tiles
 
-        # filter the translations by the primary travel direction first
         if direction == 'VERTICAL':
             valid_tiles = lcl_filter(valid_tiles, direction, 'y')
             valid_tiles = lcl_filter(valid_tiles, direction, 'x')
@@ -164,11 +154,8 @@ class StageModel():
 
     def filter_translations(self, direction) -> set[img_tile.Tile]:
         """
-        Filters grid of image tiles based on calculated overlap, correlation, and standard deviation. A set of valid image tiles after filtering is returned. This modifies the tile_grid translation values.
-        :return: list of valid image tiles
+        Filters grid of image tiles based on calculated overlap, correlation, and standard deviation.
         """
-
-        # filter the image tiles by overlap (using percent overlap uncertainty) and correlation
         img_shape = self.tile_grid.get_image_shape()
         height = img_shape[0]
         width = img_shape[1]
@@ -187,7 +174,6 @@ class StageModel():
         self.stats['{}_min_filter_threshold'.format(direction.lower())] = t_min
         self.stats['{}_max_filter_threshold'.format(direction.lower())] = t_max
         logging.info("{} translation filter min={:0.2f}, max={:0.2f}".format(direction, t_min, t_max))
-        # Filter based on t_min, t_max, and minCorrelation, and orthogonal direction
 
         valid_tiles = set()
         tile_count = 0
@@ -203,20 +189,16 @@ class StageModel():
 
                 tile_count += 1
                 if t.ncc < self.args.valid_correlation_threshold:
-                    # correlation is below valid threshold
                     continue
 
                 if direction == 'VERTICAL':
-                    # limit the valid translations to those within the t_min to t_max range
                     if t.y < t_min or t.y > t_max:
                         continue
-                    # limit the valid translations to within percent overlap error of 0 on the orthogonal direction
                     if t.x < -overlap_error or t.x > overlap_error:
                         continue
                 else:
                     if t.x < t_min or t.x > t_max:
                         continue
-                    # limit the valid translations to within percent overlap error of 0 on the orthogonal direction
                     if t.y < -overlap_error or t.y > overlap_error:
                         continue
 
@@ -236,7 +218,6 @@ class StageModel():
         if len(translations) == 0:
             raise RuntimeError("No translations found in direction: {}".format(direction))
 
-        # Filter the translations of a given direction using the percent overlap uncertainty and the correlation
         valid_tiles = self.filter_translations(direction)
         if direction == 'VERTICAL':
             self.vertical_valid_tiles = valid_tiles
@@ -244,21 +225,17 @@ class StageModel():
             self.horizontal_valid_tiles = valid_tiles
 
         if len(valid_tiles) == 0:
-            # if no valid translations have been found
             logging.warning("No good translations found for direction: {}. Estimated translations generated from the overlap.".format(direction))
             if self.args.stage_repeatability is not None:
-                logging.warning("No good translations found for direction: {}. Repeatability has been set to {} (advanced options value).".format(direction, self.args.stage_repeatability))
+                logging.warning("Repeatability has been set to {} (advanced options value).".format(self.args.stage_repeatability))
                 stage_repeatability = self.args.stage_repeatability
             else:
-                logging.warning("No good translations found for direction: {}. Repeatability has been set to 0. Please define a valid stage repeatability if possible.".format(direction))
+                logging.warning("No good translations found for direction: {}. Repeatability has been set to 0.".format(direction))
                 stage_repeatability = 0
         else:
-            # the valid translations list was not empty
             logging.info("Computing min/max combinations using {} valid translations".format(len(valid_tiles)))
             logging.info("Computing Repeatability for direction: {}".format(direction))
 
-            # Compute the repeatability as: ceil( (max - min) / 2.0) on the orthogonal translation direction
-            # i.e. for North translations, look at the x coordinate
             t_orthogonal_vals = [t.west_translation.y if direction == 'HORIZONTAL' else t.north_translation.x for t in valid_tiles]
             repeatability1 = np.ceil((np.max(t_orthogonal_vals) - np.min(t_orthogonal_vals)) / 2.0)
             logging.info("Computed {} Repeatability over all translations = {}".format(direction, repeatability1))
@@ -266,14 +243,12 @@ class StageModel():
             min_t_list = list()
             max_t_list = list()
             if direction == 'HORIZONTAL':
-                # Compute the repeatability column-wise for the primary translation direction
                 c_vals = [t.c for t in valid_tiles]
                 for c in c_vals:
                     t_vals = [t.west_translation.x for t in valid_tiles if t.c == c]
                     min_t_list.append(np.min(t_vals))
                     max_t_list.append(np.max(t_vals))
             else:
-                # Compute the repeatability column-wise for the primary translation direction
                 r_vals = [t.r for t in valid_tiles]
                 for r in r_vals:
                     t_vals = [t.north_translation.y for t in valid_tiles if t.r == r]
@@ -291,18 +266,15 @@ class StageModel():
             else:
                 self.stats['vertical_repeatability'] = stage_repeatability
             if self.args.stage_repeatability is not None:
-                logging.info("Computed stage repeatability overridden by user specified repeatability: {}".format(self.args.stage_repeatability))
+                logging.info("Stage repeatability overridden by user specified value: {}".format(self.args.stage_repeatability))
                 stage_repeatability = self.args.stage_repeatability
 
             if stage_repeatability > 10:
-                logging.warning("The computed Repeatability ({}) is unusually large. Consider manually specifying the repeatability in the Advanced Parameters.".format(stage_repeatability))
+                logging.warning("The computed Repeatability ({}) is unusually large. Consider manually specifying the repeatability.".format(stage_repeatability))
 
         return stage_repeatability
 
     def remove_invalid_translations_per_row_col(self, direction: str):
-        # Remove invalid translations that are less than 0.5 and not within the median per row for X and Y
-        # All translations that are not in range or have a correlation less than 0.5 have their correlations set to NaN.
-        # This operates per row or column depending on the direction
         if direction == 'VERTICAL':
             valid_tiles = self.vertical_valid_tiles
             repeatability = self.vertical_repeatability
@@ -310,7 +282,6 @@ class StageModel():
             valid_tiles = self.horizontal_valid_tiles
             repeatability = self.horizontal_repeatability
 
-        # compute median x and y values per row or col over the valid tiles
         med_x_vals = dict()
         med_y_vals = dict()
         for tile in valid_tiles:
@@ -327,13 +298,11 @@ class StageModel():
             med_x_vals[key] = np.median(med_x_vals[key])
             med_y_vals[key] = np.median(med_y_vals[key])
 
-        # fill in missing values with nans
         for key in range(self.args.grid_height if direction == 'VERTICAL' else self.args.grid_width):
             if key not in med_x_vals:
                 med_x_vals[key] = np.nan
                 med_y_vals[key] = np.nan
 
-        # loop over the grid, deleting translations that are not within the median +- repeatability, or have a low correlation
         for r in range(self.args.grid_height):
             for c in range(self.args.grid_width):
                 tile = self.tile_grid.get_tile(r, c)
@@ -352,26 +321,22 @@ class StageModel():
                 x_max = med_x_vals[key] + repeatability
                 y_min = med_y_vals[key] - repeatability
                 y_max = med_y_vals[key] + repeatability
-                # If correlation is less than CorrelationThreshold or outside x range or outside y range, then throw away
                 if t.ncc < self.args.valid_correlation_threshold or t.x < x_min or t.x > x_max or t.y < y_min or t.y > y_max:
                     if tile in valid_tiles:
-                        # remove it from the valid tiles list if present
                         valid_tiles.remove(tile)
                     t.ncc = np.nan
                 else:
-                    valid_tiles.add(tile)  # set add wont have duplicates
+                    valid_tiles.add(tile)
 
             self.stats['{}_valid_tiles'.format(direction.lower())] = len(valid_tiles)
-
 
     def replace_invalid_translations_per_row_col(self, direction: str):
         assert direction in ['VERTICAL', 'HORIZONTAL']
 
-        # compute the median x and y values per row or col over the whole grid
         med_x_vals = dict()
         med_y_vals = dict()
-        for r in range(1, self.args.grid_height):  # always start at 1, as the north/west edge tiles are always None
-            for c in range(1, self.args.grid_width):  # always start at 1, as the north/west edge tiles are always None
+        for r in range(1, self.args.grid_height):
+            for c in range(1, self.args.grid_width):
                 tile = self.tile_grid.get_tile(r, c)
                 if tile is None:
                     continue
@@ -431,23 +396,26 @@ class StageModel():
                     if tile is None:
                         continue
                     t = tile.get_translation(direction)
-                    if direction == 'VERTICAL':
-                        t.y = est_translation
-                        t.x = 0
+                    if t is None:
+                        # Create a default translation if missing.
+                        if direction == 'VERTICAL':
+                            t = img_tile.Peak(ncc=0.0, x=0, y=est_translation)
+                            tile.north_translation = t
+                        else:
+                            t = img_tile.Peak(ncc=0.0, x=est_translation, y=0)
+                            tile.west_translation = t
                     else:
-                        t.y = 0
-                        t.x = est_translation
+                        if direction == 'VERTICAL':
+                            t.y = est_translation
+                            t.x = 0
+                        else:
+                            t.y = 0
+                            t.x = est_translation
             return
 
         logging.info("Fixing translations for direction: {}".format(direction))
 
-        # Remove invalid translations that are less than 0.5 and not within the median per row for X and Y
-        # All translations that are not in range or have a correlation less than 0.5 have their correlations set to NaN.
-        # This operates per row or column depending on the direction
         self.remove_invalid_translations_per_row_col(direction)
-
-        # fill in the invalid (translations that have NaN in their correlation) translations per row/col
-        # If an entire row/col is empty, then it is added to the list of empty rows/cols
         self.replace_invalid_translations_per_row_col(direction)
 
         empty_rows_cols = self.missing_cols if direction == 'VERTICAL' else self.missing_rows
@@ -459,16 +427,14 @@ class StageModel():
 
         valid_tiles = self.vertical_valid_tiles if direction == 'VERTICAL' else self.horizontal_valid_tiles
         if len(valid_tiles) > 0:
-            # compute the median translation in the primary direction of travel
             direction_of_travel_estimate = int(np.median([t.north_translation.y if direction == 'VERTICAL' else t.west_translation.x for t in valid_tiles]))
         else:
-            logging.warning("No valid translations found at all for direction: {}, replacing any missing translations with estimated translation based on the stageModel overlap: (x,y) = (0, overlap*imageHeight)".format(direction))
+            logging.warning("No valid translations found for direction: {}. Using estimated translation based on stageModel overlap.".format(direction))
             overlap = self.vertical_overlap if direction == 'VERTICAL' else self.horizontal_overlap
-            overlap = overlap / 100.0  # convert [0,100] to [0,1]
-            overlap = 1.0 - overlap  # invert from overlap to non-overlapping distance
+            overlap = overlap / 100.0
+            overlap = 1.0 - overlap
             direction_of_travel_estimate = int(h_or_w * overlap)
 
-        # replace any invalid (ncc = nan) translations with the direction_of_travel_estimate
         for r in range(self.args.grid_height):
             for c in range(self.args.grid_width):
                 tile = self.tile_grid.get_tile(r, c)
@@ -476,8 +442,14 @@ class StageModel():
                     continue
                 t = tile.get_translation(direction)
                 if t is None:
-                    continue
-                if np.isnan(t.ncc):
+                    # Optionally create a new translation if one is missing.
+                    if direction == 'VERTICAL':
+                        t = img_tile.Peak(ncc=0.0, x=0, y=int(direction_of_travel_estimate))
+                        tile.north_translation = t
+                    else:
+                        t = img_tile.Peak(ncc=0.0, x=int(direction_of_travel_estimate), y=0)
+                        tile.west_translation = t
+                elif np.isnan(t.ncc):
                     if direction == 'VERTICAL':
                         t.y = int(direction_of_travel_estimate)
                         t.x = 0
@@ -486,7 +458,6 @@ class StageModel():
                         t.x = int(direction_of_travel_estimate)
 
     def build(self):
-        # build stage model
         start_time = time.time()
         self.vertical_overlap = self.compute_overlap("VERTICAL")
         self.horizontal_overlap = self.compute_overlap("HORIZONTAL")
@@ -502,11 +473,10 @@ class StageModel():
         self.stats['vertical_overlap'] = self.vertical_overlap
 
         if not np.isfinite(self.horizontal_overlap):
-            raise RuntimeError("Compute horizontal image grid overlap is not finite: {}. Please provide the appropriate overlap via the command line".format(self.horizontal_overlap))
+            raise RuntimeError("Computed horizontal image grid overlap is not finite: {}. Please provide the appropriate overlap via the command line".format(self.horizontal_overlap))
         if not np.isfinite(self.vertical_overlap):
-            raise RuntimeError("Compute image grid vertical overlap is not finite: {}. Please provide the appropriate overlap via the command line".format(self.vertical_overlap))
+            raise RuntimeError("Computed vertical image grid overlap is not finite: {}. Please provide the appropriate overlap via the command line".format(self.vertical_overlap))
 
-        # compute stage repeatability
         self.vertical_repeatability = self.compute_repeatability("VERTICAL")
         self.horizontal_repeatability = self.compute_repeatability("HORIZONTAL")
         self.repeatability = int(max(self.horizontal_repeatability, self.vertical_repeatability))
@@ -514,7 +484,6 @@ class StageModel():
 
         self.apply_model_per_direction("HORIZONTAL")
         self.apply_model_per_direction("VERTICAL")
-        # update the repeatability to reflect the search range (to encompass +- r)
         self.repeatability = int(2 * self.repeatability + 1)
         logging.info("Calculated Repeatability = {} pixels".format(self.repeatability))
 
@@ -536,6 +505,546 @@ class StageModel():
             f.write("\n")
             for key in h_keys:
                 f.write("{}: {}\n".format(key, self.stats[key]))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

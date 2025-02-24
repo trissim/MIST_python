@@ -13,12 +13,12 @@ import argparse
 import time
 
 # local imports
-import translation_refinement
-import img_grid
-import pciam
-import stage_model
-import assemble
-import utils
+import MIST.translation_refinement as translation_refinement
+import MIST.img_grid as img_grid
+import MIST.pciam as pciam
+import MIST.stage_model as stage_model
+import MIST.assemble as assemble
+import MIST.utils as utils
 
 
 

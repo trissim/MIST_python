@@ -7,11 +7,11 @@ import copy
 import enum
 
 # local imports
-import img_grid
-import img_tile
-import stage_model
-import pciam
-import utils
+import MIST.img_grid as img_grid
+import MIST.img_tile as img_tile
+import MIST.stage_model as stage_model
+import MIST.pciam as pciam
+import MIST.utils as utils
 
 
 class HillClimbDirection(enum.Enum):
@@ -33,65 +33,70 @@ class HillClimbDirection(enum.Enum):
 
 class Refine(ABC):
     @staticmethod
-    def hill_climb_worker(i1: np.ndarray, i2: np.ndarray, x_min: int, x_max: int, y_min: int, y_max: int, start_x: int, start_y: int, cache: np.ndarray) -> img_tile.Peak:
+    def hill_climb_worker(i1: np.ndarray, i2: np.ndarray, 
+                          x_min: int, x_max: int, y_min: int, y_max: int, 
+                          start_x: int, start_y: int, cache: np.ndarray) -> img_tile.Peak:
         """
-        Computes cross correlation search with hill climbing
+        Computes cross correlation search with hill climbing.
+        
         :param i1: image 1 (ego)
-        :param i2: image 1 (north or west neigbor)
+        :param i2: image 2 (neighbor: north or west)
         :param x_min: min x boundary
         :param x_max: max x boundary
         :param y_min: min y boundary
         :param y_max: max y boundary
         :param start_x: start x position for the hill climb
         :param start_y: start y position for the hill climb
-        :param cache: 2d array of np.float32 storing the ncc values for each x,y
-        :return:
+        :param cache: 2D array of np.float32 storing the NCC values for each (x,y)
+        :return: A Peak object with the best correlation and its (x, y) position.
         """
-
         best_peak = img_tile.Peak(ncc=np.nan, x=start_x, y=start_y)
-
-        # walk hill climb until we reach a top
+    
         while True:
             cur_direction = HillClimbDirection.NoMove
-
-            # translate to 0-based coordinates
+    
+            # Translate current absolute position to 0-based cache indices.
             cur_x_idx = best_peak.x - x_min
             cur_y_idx = best_peak.y - y_min
-
-            # check the current location
+    
+            # Clamp the indices to ensure they fall within cache bounds.
+            cur_x_idx = max(0, min(cur_x_idx, cache.shape[1] - 1))
+            cur_y_idx = max(0, min(cur_y_idx, cache.shape[0] - 1))
+    
             best_peak.ncc = cache[cur_y_idx, cur_x_idx]
             if np.isnan(best_peak.ncc):
                 best_peak.ncc = pciam.PCIAM.compute_cross_correlation(i1, i2, best_peak.x, best_peak.y)
                 cache[cur_y_idx, cur_x_idx] = best_peak.ncc
-
+    
             search_center = copy.deepcopy(best_peak)
-            # Check each direction and move based on highest correlation
             for d in HillClimbDirection._member_names_:
                 dir = HillClimbDirection[d]
                 if dir == HillClimbDirection.NoMove:
                     continue
-
-                # Check if moving dir is in bounds
+    
+                # Compute new absolute positions.
                 new_x = search_center.x + dir.x
                 new_y = search_center.y + dir.y
+    
+                # Ensure new absolute positions are within search bounds.
                 if new_y >= y_min and new_y <= y_max and new_x >= x_min and new_x <= x_max:
-                    # Check if we have already computed the peak at dir
-                    ncc = cache[cur_y_idx + dir.y, cur_x_idx + dir.x]
+                    # Compute corresponding cache indices and clamp them.
+                    new_x_idx = max(0, min(cur_x_idx + dir.x, cache.shape[1] - 1))
+                    new_y_idx = max(0, min(cur_y_idx + dir.y, cache.shape[0] - 1))
+                    ncc = cache[new_y_idx, new_x_idx]
                     if np.isnan(ncc):
                         ncc = pciam.PCIAM.compute_cross_correlation(i1, i2, new_x, new_y)
-                        cache[cur_y_idx + dir.y, cur_x_idx + dir.x] = ncc
+                        cache[new_y_idx, new_x_idx] = ncc
                     if ncc > best_peak.ncc:
                         best_peak.ncc = ncc
                         best_peak.x = new_x
                         best_peak.y = new_y
                         cur_direction = dir
-
+    
             if cur_direction == HillClimbDirection.NoMove:
-                # if the direction was a NoMove, then we are done
                 break
-
+    
         if np.isnan(best_peak.ncc):
-            # no best peak was found, use center of search area
             best_peak.x = int((x_max + x_min) / 2)
             best_peak.y = int((y_max + y_min) / 2)
             best_peak.ncc = -1.0
@@ -226,7 +231,11 @@ class RefineParallel(Refine):
         # for worker_input in worker_input_list:
         #     results.append(self._worker(*worker_input))
         import multiprocessing
-        with multiprocessing.Pool(processes=utils.get_num_workers()) as pool:
+        if hasattr(self.args, 'num_threads'):
+            processes=self.args.num_threads
+        else:
+            processes=utils.get_num_workers()
+        with multiprocessing.Pool(processes=processes) as pool:
             # perform the work in parallel
             results = pool.starmap(self._worker, worker_input_list)
 
