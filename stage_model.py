@@ -5,11 +5,11 @@ import logging
 import time
 
 # local imports
-import MIST.img_grid as img_grid
-import MIST.translation_refinement as translation_refinement
+import img_grid
+import translation_refinement
 import MIST.utils as utils
-import MIST.mle_estimator as mle_estimator
-import MIST.img_tile as img_tile
+import mle_estimator
+import img_tile
 
 
 class StageModel():

@@ -3,7 +3,8 @@ import numpy as np
 import skimage.io
 from dataclasses import dataclass
 import typing
-import MIST.translation_refinement as translation_refinement
+# Remove circular import
+# import translation_refinement
 
 
 @dataclass

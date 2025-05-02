@@ -1,3 +1,16 @@
+# plan_01c_gpu_hooks_pciam.md
+## Component: PCIAM Modifications
+
+### Objective
+Modify the PCIAM class to use the ComputeBackend interface for its computational operations.
+
+### Implementation Draft
+
+#### 1. Modify PCIAM to Use the Backend Interface
+
+We'll update the PCIAM class to use the backend interface:
+
+```python
 import argparse
 import numpy as np
 import scipy.fft
@@ -6,142 +19,83 @@ import logging
 from abc import ABC
 
 # local imports
-import img_tile
-import img_grid
+import MIST.img_tile as img_tile
+import MIST.img_grid as img_grid
 import MIST.utils as utils
 from MIST.compute_backend import ComputeBackend
 from MIST.backend_factory import create_compute_backend
-
 
 class PCIAM(ABC):
     """
     Phase Correlation Image Alignment Method (PCIAM) base class.
     This class now delegates computational operations to a ComputeBackend instance.
     """
-
+    
     @staticmethod
     def extract_subregion(t1: np.ndarray, x: int, y: int) -> np.ndarray:
         """
         Legacy static method that delegates to the CPU backend.
         Kept for backward compatibility.
-
-        Args:
-            t1: The image tile a sub-region is being extracted from
-            x: The x component of the translation
-            y: The y component of the translation
-
-        Returns:
-            The extracted sub-region, or None if there's no overlap
         """
         from MIST.cpu_backend import CPUBackend
         cpu_backend = CPUBackend()
         return cpu_backend.extract_subregion(t1, x, y)
-
+    
     @staticmethod
     def cross_correlation(a1: np.ndarray, a2: np.ndarray) -> float:
         """
         Legacy static method that delegates to the CPU backend.
         Kept for backward compatibility.
-
-        Args:
-            a1: The first array
-            a2: The second array
-
-        Returns:
-            The normalized cross correlation between the two arrays
         """
         from MIST.cpu_backend import CPUBackend
         cpu_backend = CPUBackend()
         return cpu_backend.cross_correlation(a1, a2)
-
+    
     @staticmethod
     def compute_cross_correlation(t1: np.ndarray, t2: np.ndarray, x: int, y: int) -> float:
         """
         Legacy static method that delegates to the CPU backend.
         Kept for backward compatibility.
-
-        Args:
-            t1: The first tile
-            t2: The second tile
-            x: The x component of the translation from t1 to t2
-            y: The y component of the translation from t1 to t2
-
-        Returns:
-            The normalized cross correlation between the overlapping pixels
         """
         from MIST.cpu_backend import CPUBackend
         cpu_backend = CPUBackend()
         return cpu_backend.compute_cross_correlation(t1, t2, x, y)
-
+    
     @staticmethod
     def peak_cross_correlation_worker(t1: np.ndarray, t2: np.ndarray, dims: list[tuple[int, int]]) -> img_tile.Peak:
         """
         Legacy static method that delegates to the CPU backend.
         Kept for backward compatibility.
-
-        Args:
-            t1: The first image
-            t2: The second image
-            dims: List of (y, x) offset tuples to check
-
-        Returns:
-            The Peak with the highest NCC value
         """
         from MIST.cpu_backend import CPUBackend
         cpu_backend = CPUBackend()
         return cpu_backend.peak_cross_correlation_worker(t1, t2, dims)
-
+    
     @staticmethod
     def peak_cross_correlation_lr(t1: np.ndarray, t2: np.ndarray, x: int, y: int) -> img_tile.Peak:
         """
         Legacy static method that delegates to the CPU backend.
         Kept for backward compatibility.
-
-        Args:
-            t1: The left image
-            t2: The right image
-            x: The x component of the initial offset
-            y: The y component of the initial offset
-
-        Returns:
-            The Peak with the highest NCC value
         """
         from MIST.cpu_backend import CPUBackend
         cpu_backend = CPUBackend()
         return cpu_backend.peak_cross_correlation_lr(t1, t2, x, y)
-
+    
     @staticmethod
     def peak_cross_correlation_ud(t1: np.ndarray, t2: np.ndarray, x: int, y: int) -> img_tile.Peak:
         """
         Legacy static method that delegates to the CPU backend.
         Kept for backward compatibility.
-
-        Args:
-            t1: The top image
-            t2: The bottom image
-            x: The x component of the initial offset
-            y: The y component of the initial offset
-
-        Returns:
-            The Peak with the highest NCC value
         """
         from MIST.cpu_backend import CPUBackend
         cpu_backend = CPUBackend()
         return cpu_backend.peak_cross_correlation_ud(t1, t2, x, y)
-
+    
     @staticmethod
     def compute_pciam(t1: img_tile.Tile, t2: img_tile.Tile, n_peaks: int) -> img_tile.Peak:
         """
         Legacy static method that delegates to the CPU backend.
         Kept for backward compatibility.
-
-        Args:
-            t1: The first tile
-            t2: The second tile
-            n_peaks: Number of peaks to consider from the phase correlation
-
-        Returns:
-            The Peak with the highest NCC value
         """
         from MIST.cpu_backend import CPUBackend
         cpu_backend = CPUBackend()
@@ -174,7 +128,7 @@ class PciamSequential(PCIAM):
                     tile.north_translation = peak
 
         elapsed_time = time.time() - start_time
-        logging.info(f"Finished computing all pairwise translations in {elapsed_time:.3f} seconds using {self.backend.__class__.__name__} backend")
+        logging.info("Finished computing all pairwise translations in {} seconds".format(elapsed_time))
 
 
 class PciamParallel(PCIAM):
@@ -212,9 +166,6 @@ class PciamParallel(PCIAM):
                 if north is not None:
                     worker_input_list.append((tile, north, r, c, 'north', self.args.num_fft_peaks))
 
-        # results = list()
-        # for worker_input in worker_input_list:
-        #     results.append(self._worker(*worker_input))
         import multiprocessing
         if hasattr(self.args, 'num_threads'):
             processes = self.args.num_threads
@@ -234,4 +185,5 @@ class PciamParallel(PCIAM):
                     tile.north_translation = peak
 
         elapsed_time = time.time() - start_time
-        logging.info(f"Finished computing all pairwise translations in {elapsed_time:.3f} seconds using parallel processing")
+        logging.info("Finished computing all pairwise translations in {} seconds".format(elapsed_time))
+```

@@ -13,11 +13,11 @@ import argparse
 import time
 
 # local imports
-import MIST.translation_refinement as translation_refinement
-import MIST.img_grid as img_grid
-import MIST.pciam as pciam
-import MIST.stage_model as stage_model
-import MIST.assemble as assemble
+import translation_refinement
+import img_grid
+import pciam
+import stage_model
+import assemble
 import MIST.utils as utils
 
 
@@ -135,6 +135,12 @@ if __name__ == "__main__":
     parser.add_argument('--translation-refinement-method', type=str, default='SINGLEHILLCLIMB', choices=['SINGLEHILLCLIMB', 'MULTIPOINTHILLCLIMB'])
     parser.add_argument('--num-hill-climbs', type=int, default=16)
     parser.add_argument('--num-fft-peaks', type=int, default=2)
+
+    # GPU acceleration parameters
+    parser.add_argument('--use-gpu', action="store_true", default=False,
+                        help='Use GPU acceleration if available')
+    parser.add_argument('--gpu-device', type=int, default=0,
+                        help='GPU device ID to use (default: 0)')
 
     args = parser.parse_args()
 

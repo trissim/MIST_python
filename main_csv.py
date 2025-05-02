@@ -119,6 +119,12 @@ if __name__ == "__main__":
     parser.add_argument('--num-hill-climbs', type=int, default=16)
     parser.add_argument('--num-fft-peaks', type=int, default=2)
 
+    # GPU acceleration parameters
+    parser.add_argument('--use-gpu', action="store_true", default=False,
+                        help='Use GPU acceleration if available')
+    parser.add_argument('--gpu-device', type=int, default=0,
+                        help='GPU device ID to use (default: 0)')
+
     args = parser.parse_args()
 
     mist_from_csv(args)
